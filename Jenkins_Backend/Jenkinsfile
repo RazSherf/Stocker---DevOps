@@ -1,5 +1,10 @@
 pipeline {
     agent any
+    options {
+        // Retain only the last 4 builds
+        buildDiscarder(logRotator(numToKeepStr: '4'))
+    }
+
 
     environment {
         DOCKER_IMAGE = 'new_test'
