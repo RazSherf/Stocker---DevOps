@@ -19,16 +19,17 @@ pipeline {
         stage('Detect Changes') {
             steps {
                 script {
-                    // Check if backend-related files were changed
+                    // Detect changes in the backend folder (use git diff on the last commit)
                     def backendChanged = sh(
-                        script: "git diff --name-only HEAD~1 HEAD | grep -qE '^backend/'",
+                        script: "git diff --name-only HEAD^..HEAD | grep -qE '^backend/'",
                         returnStatus: true
                     ) == 0
 
-                    // Skip subsequent stages if no changes
+                    // If no changes detected in the backend folder, abort the build
                     if (!backendChanged) {
-                        currentBuild.result = 'NOT_BUILT'
-                        error("No changes detected in backend. Skipping pipeline.")
+                        currentBuild.result = 'ABORTED'
+                        echo "No relevant changes detected in the backend directory. Aborting pipeline."
+                        error("No changes detected in the backend directory.")
                     }
                 }
             }
@@ -88,8 +89,8 @@ pipeline {
         failure {
             echo 'Pipeline failed. Check the logs for details.'
         }
-        notBuilt {
-            echo 'No relevant changes detected. Skipping pipeline execution.'
+        aborted {
+            echo 'Pipeline was aborted because no relevant changes were detected.'
         }
     }
 }
