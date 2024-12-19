@@ -1,0 +1,100 @@
+pipeline {
+    agent any
+    options {
+        // Retain only the last 4 builds
+        buildDiscarder(logRotator(numToKeepStr: '4'))
+    }
+
+    environment {
+        DOCKER_IMAGE = 'frontend_image'  // Change to an appropriate name for the frontend
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
+        GITHUB_REPO_URL = 'https://github.com/RazSherf/Stocker---App'  // This is the frontend repo URL
+        AWS_REGION = 'us-east-1'
+        ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/project-repo-frontend'  // Change to appropriate frontend ECR repo URI
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: "${GITHUB_REPO_URL}"
+            }
+        }
+
+        stage('Detect Changes') {
+            steps {
+                script {
+                    // Detect changes in the frontend folder (use git diff on the last commit)
+                    def frontendChanged = sh(
+                        script: "git diff --name-only HEAD^..HEAD | grep -qE '^frontend/'",
+                        returnStatus: true
+                    ) == 0
+
+                    // If no changes detected in the frontend folder, abort the build
+                    if (!frontendChanged) {
+                        currentBuild.result = 'ABORTED'
+                        echo "No relevant changes detected in the frontend directory. Aborting pipeline."
+                        error("No changes detected in the frontend directory.")
+                    }
+                }
+            }
+        }
+
+        stage('Clean Old Images') {
+            steps {
+                script {
+                    sh "docker rmi -f ${DOCKER_IMAGE}:${DOCKER_TAG} || true"
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}", "-f frontend/Dockerfile frontend")
+                }
+            }
+        }
+
+        stage('Push Docker Image to ECR') {
+            steps {
+                script {
+                    // Authenticate Docker with ECR
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS --password-stdin ${ECR_REPO_URI}
+                    """
+                    
+                    // Tag and push the Docker image to ECR
+                    sh """
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REPO_URI}:${DOCKER_TAG}
+                        docker push ${ECR_REPO_URI}:${DOCKER_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Run Docker Image') {
+            steps {
+                script {
+                    sh """
+                        docker stop test-container || true
+                        docker rm test-container || true
+                        docker run -d --name test-container -p 5000:5000 ${ECR_REPO_URI}:${DOCKER_TAG}
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully! Docker container is running.'
+        }
+        failure {
+            echo 'Pipeline failed. Check the logs for details.'
+        }
+        aborted {
+            echo 'Pipeline was aborted because no relevant changes were detected.'
+        }
+    }
+}
