@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: default
+data:
+  # Backend Variables
+  MONGODB_URI: mongodb://admin:password@mongodb:27017/productdb?authSource=admin
+  NODE_ENV: development
+
+  # Frontend Variables
+  REACT_APP_BACKEND_API_URL: http://<NodeIP>:30002
