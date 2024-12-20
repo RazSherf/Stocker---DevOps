@@ -11,7 +11,7 @@ pipeline {
         DOCKER_TAG = "${env.BUILD_NUMBER}"  // Tag the image with the build number
         GITHUB_REPO_URL = 'https://github.com/RazSherf/Stocker---App'
         AWS_REGION = 'us-east-1'
-        ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/project-repo-app'
+        ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo'
     }
 
     stages {
