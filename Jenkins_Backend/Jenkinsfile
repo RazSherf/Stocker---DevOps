@@ -5,10 +5,10 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '4'))
     }
 
-
     environment {
-        DOCKER_IMAGE = 'new_test'
-        DOCKER_TAG = "${env.BUILD_NUMBER}"
+        // Change the image name to 'backend_image'
+        DOCKER_IMAGE = 'backend_image'
+        DOCKER_TAG = "${env.BUILD_NUMBER}"  // Tag the image with the build number
         GITHUB_REPO_URL = 'https://github.com/RazSherf/Stocker---App'
         AWS_REGION = 'us-east-1'
         ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/project-repo-app'
@@ -51,6 +51,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
+                    // Build image and tag with backend_image:{BUILD_NUMBER}
                     docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}", "-f backend/Dockerfile backend")
                 }
             }
@@ -65,7 +66,7 @@ pipeline {
                         docker login --username AWS --password-stdin ${ECR_REPO_URI}
                     """
                     
-                    // Tag and push the Docker image to ECR
+                    // Tag and push the Docker image to ECR with the new tag format
                     sh """
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REPO_URI}:${DOCKER_TAG}
                         docker push ${ECR_REPO_URI}:${DOCKER_TAG}
