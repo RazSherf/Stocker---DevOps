@@ -10,8 +10,10 @@ pipeline {
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         GITHUB_REPO_URL = 'https://github.com/RazSherf/Stocker---App'  // This is the frontend repo URL
         AWS_REGION = 'us-east-1'
-        ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/project-repo-frontend'  // Change to appropriate frontend ECR repo URI
+        ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/frontend_repo'
     }
+
+    
 
     stages {
         stage('Checkout') {
