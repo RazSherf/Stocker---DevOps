@@ -52,6 +52,7 @@ pipeline {
             steps {
                 script {
                     // Build image and tag with backend_image:{BUILD_NUMBER}
+                    echo "Building Docker image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
                     docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}", "-f backend/Dockerfile backend")
                 }
             }
@@ -66,9 +67,10 @@ pipeline {
                         docker login --username AWS --password-stdin ${ECR_REPO_URI}
                     """
                     
-                    // Tag and push the Docker image to ECR with the new tag format
+                    // Tag the image with both the local tag and the ECR tag
                     sh """
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REPO_URI}:${DOCKER_TAG}
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:${DOCKER_TAG}  # Add this line to ensure the local image is tagged too
                         docker push ${ECR_REPO_URI}:${DOCKER_TAG}
                     """
                 }
