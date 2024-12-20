@@ -1,22 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: backend
+  name: frontend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: backend
+      app: frontend
   template:
     metadata:
       labels:
-        app: backend
+        app: frontend
     spec:
       containers:
-        - name: k8s-backend
-          image: 471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo:21
+        - name: k8s-frontend
+          image: stocker-frontend
+          imagePullPolicy: Never
           ports:
-            - containerPort: 5005
+            - containerPort: 80
           envFrom:
             - configMapRef:
                 name: app-config
