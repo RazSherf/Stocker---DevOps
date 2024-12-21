@@ -14,7 +14,6 @@ pipeline {
     }
 
     
-
     stages {
         stage('Checkout') {
             steps {
@@ -34,6 +33,7 @@ pipeline {
                     // If no changes detected in the frontend folder, abort the build
                     if (!frontendChanged) {
                         currentBuild.result = 'ABORTED'
+                        currentBuild.rawBuild.keepLog(false) // Ensure the build is not retained
                         echo "No relevant changes detected in the frontend directory. Aborting pipeline."
                         error("No changes detected in the frontend directory.")
                     }
@@ -75,17 +75,17 @@ pipeline {
             }
         }
 
-        stage('Run Docker Image') {
-            steps {
-                script {
-                    sh """
-                        docker stop test-container || true
-                        docker rm test-container || true
-                        docker run -d --name test-container -p 5000:5000 ${ECR_REPO_URI}:${DOCKER_TAG}
-                    """
-                }
-            }
-        }
+        // stage('Run Docker Image') {
+        //     steps {
+        //         script {
+        //             sh """
+        //                 docker stop test-container || true
+        //                 docker rm test-container || true
+        //                 docker run -d --name test-container -p 5000:5000 ${ECR_REPO_URI}:${DOCKER_TAG}
+        //             """
+        //         }
+        //     }
+        // }
     }
 
     post {
