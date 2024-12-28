@@ -12,6 +12,8 @@ pipeline {
         AWS_REGION = 'us-east-1'
         ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/frontend_repo'
         EC2_HOST = 'ec2-user@18.213.94.237'
+        DEPLOYMENT_FILE = '/home/ec2-user/Stocker---DevOps/Kubernetes/deployments/frontend-deployment.yaml'
+
     }
 
     
@@ -75,28 +77,59 @@ pipeline {
                 }
             }
         }
-        stage('Test SSH Connection to EC2') {
+         stage('Test SSH Connection and Pull Image') {
             environment {
-                SSH_KEY = credentials('ec2-ssh-key')  // Use your credentials ID
+                SSH_KEY = credentials('ec2-ssh-key')
             }
             steps {
                 script {
                     try {
-                        withAWS(region: "${AWS_REGION}", credentials: 'aws-credentials') {
-                            sh """
-                                # Make sure key has correct permissions
-                                chmod 400 ${SSH_KEY}
+                        sh """
+                            chmod 400 \${SSH_KEY}
+                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
+                                export AWS_DEFAULT_REGION=${AWS_REGION}
                                 
-                                # Connect to EC2 and create test file
-                                ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_HOST} '
-                                    echo "Testing SSH connection from Jenkins at \$(date)" > ~/file1.txt
-                                    echo "File created successfully:"
-                                    cat ~/file1.txt
-                                '
-                            """
-                        }
+                                aws ecr get-login-password --region ${AWS_REGION} | \
+                                docker login --username AWS --password-stdin ${ECR_REPO_URI}
+                                
+                                echo "Pulling image: ${ECR_REPO_URI}:${DOCKER_TAG}"
+                                docker pull ${ECR_REPO_URI}:${DOCKER_TAG}
+                                
+                                docker images | grep ${ECR_REPO_URI}
+                            '
+                        """
                     } catch (Exception e) {
-                        error "Failed to connect to EC2: ${e.getMessage()}"
+                        error "Failed to pull image on EC2: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+
+        stage('Update Kubernetes Deployment') {
+            environment {
+                SSH_KEY = credentials('ec2-ssh-key')
+            }
+            steps {
+                script {
+                    try {
+                        sh """
+                            chmod 400 \${SSH_KEY}
+                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
+                                echo "Updating deployment file with new image tag: ${DOCKER_TAG}"
+                                sed -i "s|${ECR_REPO_URI}:[0-9]*|${ECR_REPO_URI}:${DOCKER_TAG}|g" ${DEPLOYMENT_FILE}
+                                
+                                echo "Applying updated deployment..."
+                                kubectl apply -f ${DEPLOYMENT_FILE}
+                                
+                                echo "Waiting for rollout to complete..."
+                                kubectl rollout status deployment/backend
+                                
+                                echo "Current deployment status:"
+                                kubectl get deployment backend
+                            '
+                        """
+                    } catch (Exception e) {
+                        error "Failed to update Kubernetes deployment: ${e.getMessage()}"
                     }
                 }
             }
