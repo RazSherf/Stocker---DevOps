@@ -1,18 +1,17 @@
 pipeline {
     agent any
     options {
-        // Retain only the last 4 builds
         buildDiscarder(logRotator(numToKeepStr: '4'))
     }
 
     environment {
-        // Change the image name to 'backend_image'
         DOCKER_IMAGE = 'backend_image'
-        DOCKER_TAG = "${env.BUILD_NUMBER}"  // Tag the image with the build number
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
         GITHUB_REPO_URL = 'https://github.com/RazSherf/Stocker---App'
         AWS_REGION = 'us-east-1'
         ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo'
         EC2_HOST = 'ec2-user@18.213.94.237'
+        DEPLOYMENT_FILE = '/Stocker---DevOps/Kubernetes/deployments/backend-deployment.yaml'  // Added full path to deployment file
     }
 
     stages {
@@ -25,16 +24,14 @@ pipeline {
         stage('Detect Changes') {
             steps {
                 script {
-                    // Detect changes in the backend folder (use git diff on the last commit)
                     def backendChanged = sh(
                         script: "git diff --name-only HEAD^..HEAD | grep -qE '^backend/'",
                         returnStatus: true
                     ) == 0
 
-                    // If no changes detected in the backend folder, abort the build
                     if (!backendChanged) {
                         currentBuild.result = 'ABORTED'
-                        currentBuild.rawBuild.keepLog(false) // Ensure the build is not retained
+                        currentBuild.rawBuild.keepLog(false)
                         echo "No relevant changes detected in the backend directory. Aborting pipeline."
                         error("No changes detected in the backend directory.")
                     }
@@ -53,7 +50,6 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Build image and tag with backend_image:{BUILD_NUMBER}
                     echo "Building Docker image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
                     docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}", "-f backend/Dockerfile backend")
                 }
@@ -63,13 +59,11 @@ pipeline {
         stage('Push Docker Image to ECR') {
             steps {
                 script {
-                    // Authenticate Docker with ECR
                     sh """
                         aws ecr get-login-password --region ${AWS_REGION} | \
                         docker login --username AWS --password-stdin ${ECR_REPO_URI}
                     """
                     
-                    // Tag the image with both the local tag and the ECR tag
                     sh """
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REPO_URI}:${DOCKER_TAG}
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:${DOCKER_TAG}
@@ -79,7 +73,7 @@ pipeline {
             }
         }
 
-       stage('Test SSH Connection and Pull Image') {
+        stage('Test SSH Connection and Pull Image') {
             environment {
                 SSH_KEY = credentials('ec2-ssh-key')
             }
@@ -89,18 +83,14 @@ pipeline {
                         sh """
                             chmod 400 \${SSH_KEY}
                             ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
-                                # Configure AWS CLI with region
                                 export AWS_DEFAULT_REGION=${AWS_REGION}
                                 
-                                # Login to ECR
                                 aws ecr get-login-password --region ${AWS_REGION} | \
                                 docker login --username AWS --password-stdin ${ECR_REPO_URI}
                                 
-                                # Pull the latest image
                                 echo "Pulling image: ${ECR_REPO_URI}:${DOCKER_TAG}"
                                 docker pull ${ECR_REPO_URI}:${DOCKER_TAG}
                                 
-                                # Verify the image was pulled
                                 docker images | grep ${ECR_REPO_URI}
                             '
                         """
@@ -110,11 +100,41 @@ pipeline {
                 }
             }
         }
+
+        stage('Update Kubernetes Deployment') {
+            environment {
+                SSH_KEY = credentials('ec2-ssh-key')
+            }
+            steps {
+                script {
+                    try {
+                        sh """
+                            chmod 400 \${SSH_KEY}
+                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
+                                echo "Updating deployment file with new image tag: ${DOCKER_TAG}"
+                                sed -i "s|${ECR_REPO_URI}:[0-9]*|${ECR_REPO_URI}:${DOCKER_TAG}|g" ${DEPLOYMENT_FILE}
+                                
+                                echo "Applying updated deployment..."
+                                kubectl apply -f ${DEPLOYMENT_FILE}
+                                
+                                echo "Waiting for rollout to complete..."
+                                kubectl rollout status deployment/backend
+                                
+                                echo "Current deployment status:"
+                                kubectl get deployment backend
+                            '
+                        """
+                    } catch (Exception e) {
+                        error "Failed to update Kubernetes deployment: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
     }
 
     post {
         success {
-            echo 'Pipeline completed successfully! Docker container is running.'
+            echo 'Pipeline completed successfully! New version deployed to Kubernetes.'
         }
         failure {
             echo 'Pipeline failed. Check the logs for details.'
