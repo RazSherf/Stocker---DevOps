@@ -122,14 +122,51 @@ pipeline {
                                 kubectl apply -f ${DEPLOYMENT_FILE}
                                 
                                 echo "Waiting for rollout to complete..."
-                                kubectl rollout status deployment/backend
+                                kubectl rollout status deployment/frontend
                                 
                                 echo "Current deployment status:"
-                                kubectl get deployment backend
+                                kubectl get deployment frontend
                             '
                         """
                     } catch (Exception e) {
                         error "Failed to update Kubernetes deployment: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+
+        stage('Cleanup Old Images') {
+            environment {
+                SSH_KEY = credentials('ec2-ssh-key')
+            }
+            steps {
+                script {
+                    try {
+                        sh """
+                            chmod 400 \${SSH_KEY}
+                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
+                                echo "Cleaning up old Docker images..."
+                                
+                                # Get all image tags except the latest two
+                                OLD_TAGS=\$(docker images ${ECR_REPO_URI} --format "{{.Tag}}" | sort -n | head -n -2)
+                                
+                                # Remove old images if they exist
+                                if [ ! -z "\${OLD_TAGS}" ]; then
+                                    for tag in \${OLD_TAGS}; do
+                                        echo "Removing image: ${ECR_REPO_URI}:\${tag}"
+                                        docker rmi ${ECR_REPO_URI}:\${tag} || true
+                                    done
+                                else
+                                    echo "No old images to clean up"
+                                fi
+                                
+                                echo "Current images:"
+                                docker images ${ECR_REPO_URI}
+                            '
+                        """
+                    } catch (Exception e) {
+                        echo "Warning: Image cleanup encountered an issue: ${e.getMessage()}"
+                        // Don't fail the build if cleanup fails
                     }
                 }
             }
