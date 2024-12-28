@@ -11,6 +11,7 @@ pipeline {
         GITHUB_REPO_URL = 'https://github.com/RazSherf/Stocker---App'  // This is the frontend repo URL
         AWS_REGION = 'us-east-1'
         ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/frontend_repo'
+         EC2_HOST = 'ec2-user@18.213.94.237'
     }
 
     
@@ -74,18 +75,35 @@ pipeline {
                 }
             }
         }
+        stage('Test SSH Connection to EC2') {
+            environment {
+                SSH_KEY = credentials('ec2-ssh-key')  // Use your credentials ID
+            }
+            steps {
+                script {
+                    try {
+                        withAWS(region: "${AWS_REGION}", credentials: 'aws-credentials') {
+                            sh """
+                                # Make sure key has correct permissions
+                                chmod 400 ${SSH_KEY}
+                                
+                                # Connect to EC2 and create test file
+                                ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_HOST} '
+                                    echo "Testing SSH connection from Jenkins at \$(date)" > ~/file1.txt
+                                    echo "File created successfully:"
+                                    cat ~/file1.txt
+                                '
+                            """
+                        }
+                    } catch (Exception e) {
+                        error "Failed to connect to EC2: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+    
 
-        // stage('Run Docker Image') {
-        //     steps {
-        //         script {
-        //             sh """
-        //                 docker stop test-container || true
-        //                 docker rm test-container || true
-        //                 docker run -d --name test-container -p 5000:5000 ${ECR_REPO_URI}:${DOCKER_TAG}
-        //             """
-        //         }
-        //     }
-        // }
+        
     }
 
     post {
