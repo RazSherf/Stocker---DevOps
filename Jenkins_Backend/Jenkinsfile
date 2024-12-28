@@ -11,7 +11,8 @@ pipeline {
         AWS_REGION = 'us-east-1'
         ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo'
         EC2_HOST = 'ec2-user@18.213.94.237'
-        DEPLOYMENT_FILE = '/Stocker---DevOps/Kubernetes/deployments/backend-deployment.yaml'  // Added full path to deployment file
+        DEPLOYMENT_FILE = '/home/ec2-user/Stocker---DevOps/Kubernetes/deployments/backend-deployment.yaml'
+       
     }
 
     stages {
