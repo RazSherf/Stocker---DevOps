@@ -72,7 +72,7 @@ pipeline {
                     // Tag the image with both the local tag and the ECR tag
                     sh """
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REPO_URI}:${DOCKER_TAG}
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:${DOCKER_TAG}  # Add this line to ensure the local image is tagged too
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:${DOCKER_TAG}
                         docker push ${ECR_REPO_URI}:${DOCKER_TAG}
                     """
                 }
@@ -81,24 +81,19 @@ pipeline {
 
         stage('Test SSH Connection to EC2') {
             environment {
-                SSH_KEY = credentials('ec2-ssh-key')  // Use your credentials ID
+                SSH_KEY = credentials('ec2-ssh-key')
             }
             steps {
                 script {
                     try {
-                        withAWS(region: "${AWS_REGION}", credentials: 'aws-credentials') {
-                            sh """
-                                # Make sure key has correct permissions
-                                chmod 400 ${SSH_KEY}
-                                
-                                # Connect to EC2 and create test file
-                                ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} ${EC2_HOST} '
-                                    echo "Testing SSH connection from Jenkins at \$(date)" > ~/file1.txt
-                                    echo "File created successfully:"
-                                    cat ~/file1.txt
-                                '
-                            """
-                        }
+                        sh """
+                            chmod 400 \${SSH_KEY}
+                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
+                                echo "Testing SSH connection from Jenkins at \$(date)" > ~/file1.txt
+                                echo "File created successfully:"
+                                cat ~/file1.txt
+                            '
+                        """
                     } catch (Exception e) {
                         error "Failed to connect to EC2: ${e.getMessage()}"
                     }
