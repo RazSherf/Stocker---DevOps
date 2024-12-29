@@ -74,18 +74,26 @@ pipeline {
                     
                     withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
                         sh '''
+                            # Show current image tag
+                            echo "Current deployment file content:"
+                            cat Kubernetes/deployments/backend-deployment.yaml
+                            
                             # Update image tag in deployment file
                             sed -i "s|${ECR_REPO_URI}:[0-9]*|${ECR_REPO_URI}:${DOCKER_TAG}|g" Kubernetes/deployments/backend-deployment.yaml
+                            
+                            # Show updated content
+                            echo "Updated deployment file content:"
+                            cat Kubernetes/deployments/backend-deployment.yaml
                             
                             # Configure git
                             git config user.email "jenkins@example.com"
                             git config user.name "Jenkins"
                             
-                            # Commit and push changes
-                            git add Kubernetes/deployments/backend-deployment.yaml
-                            git commit -m "Update backend deployment to version ${DOCKER_TAG}" || true
+                            # Force add and commit changes
+                            git add -f Kubernetes/deployments/backend-deployment.yaml
+                            git diff --cached --exit-code || git commit -m "Update backend deployment to version ${DOCKER_TAG}"
                             
-                            # Use credentials safely
+                            # Use credentials safely and force push
                             git remote set-url origin "https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/RazSherf/Stocker---DevOps.git"
                             git push origin main
                         '''
@@ -106,7 +114,9 @@ pipeline {
                             ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
                                 # Pull latest deployment configurations
                                 cd /home/ec2-user/Stocker---DevOps
-                                git pull origin main
+                                git config pull.rebase false
+                                git fetch origin main
+                                git reset --hard origin/main
                                 
                                 # Pull new image from ECR
                                 aws ecr get-login-password --region ${AWS_REGION} | \
