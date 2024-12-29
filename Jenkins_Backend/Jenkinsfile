@@ -114,21 +114,26 @@ pipeline {
                             ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
                                 # Pull latest deployment configurations
                                 cd /home/ec2-user/Stocker---DevOps
-                                git config pull.rebase false
-                                git fetch origin main
+                                
+                                # Reset any local changes and update from remote
+                                git checkout main
+                                git fetch origin
                                 git reset --hard origin/main
                                 
-                                # Pull new image from ECR
+                                # Login to ECR and pull new image
                                 aws ecr get-login-password --region ${AWS_REGION} | \
                                 docker login --username AWS --password-stdin ${ECR_REPO_URI}
+                                
+                                echo "Pulling image: ${ECR_REPO_URI}:${DOCKER_TAG}"
                                 docker pull ${ECR_REPO_URI}:${DOCKER_TAG}
                                 
                                 # Apply the deployment
                                 kubectl apply -f Kubernetes/deployments/backend-deployment.yaml
-                                kubectl rollout status deployment/backend
+                                kubectl rollout status deployment/backend --timeout=60s
                             '
                         """
                     } catch (Exception e) {
+                        echo "Deployment failed: ${e.getMessage()}"
                         error "Failed to deploy to Kubernetes: ${e.getMessage()}"
                     }
                 }
