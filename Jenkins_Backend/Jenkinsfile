@@ -85,7 +85,7 @@ pipeline {
                             # Commit and push changes
                             git add Kubernetes/deployments/backend-deployment.yaml
                             git commit -m "Update backend deployment to version ${DOCKER_TAG}" || true
-                            git push https://${GITHUB_CREDS_USR}:${GITHUB_CREDS_PSW}@${GITHUB_DEPLOYMENT_REPO#https://}.git main
+                            git push https://${GITHUB_CREDS_USR}:${GITHUB_CREDS_PSW}@github.com/RazSherf/Stocker---DevOps.git main
                         """
                     }
                 }
