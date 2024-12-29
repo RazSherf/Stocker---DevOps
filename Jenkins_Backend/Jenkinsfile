@@ -120,6 +120,10 @@ pipeline {
                                 git fetch origin
                                 git reset --hard origin/main
                                 
+                                # Show deployment file content
+                                echo "Current deployment file content:"
+                                cat Kubernetes/deployments/backend-deployment.yaml
+                                
                                 # Login to ECR and pull new image
                                 aws ecr get-login-password --region ${AWS_REGION} | \
                                 docker login --username AWS --password-stdin ${ECR_REPO_URI}
@@ -129,11 +133,31 @@ pipeline {
                                 
                                 # Apply the deployment
                                 kubectl apply -f Kubernetes/deployments/backend-deployment.yaml
-                                kubectl rollout status deployment/backend --timeout=60s
+                                
+                                # Wait for rollout with increased timeout
+                                kubectl rollout status deployment/backend --timeout=180s
+                                
+                                # Show deployment status
+                                echo "Deployment status:"
+                                kubectl get deployment backend
+                                kubectl get pods -l app=backend
                             '
                         """
                     } catch (Exception e) {
                         echo "Deployment failed: ${e.getMessage()}"
+                        
+                        // Get additional debugging information
+                        sh """
+                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
+                                echo "Pod status:"
+                                kubectl get pods -l app=backend
+                                echo "Pod logs:"
+                                kubectl logs -l app=backend --tail=50
+                                echo "Pod description:"
+                                kubectl describe pods -l app=backend
+                            '
+                        """
+                        
                         error "Failed to deploy to Kubernetes: ${e.getMessage()}"
                     }
                 }
