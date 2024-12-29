@@ -10,3 +10,7 @@ data:
 
   # Frontend Variables
   REACT_APP_BACKEND_API_URL: http://<NodeIP>:30002
+
+  # Added metrics configuration
+  METRICS_PORT: "9090"
+  ENABLE_METRICS: "true"
