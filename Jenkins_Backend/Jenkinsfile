@@ -8,17 +8,19 @@ pipeline {
         DOCKER_IMAGE = 'backend_image'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
         GITHUB_REPO_URL = 'https://github.com/RazSherf/Stocker---App'
+        GITHUB_DEPLOYMENT_REPO = 'https://github.com/RazSherf/Stocker---DevOps'
         AWS_REGION = 'us-east-1'
         ECR_REPO_URI = '471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo'
         EC2_HOST = 'ec2-user@18.213.94.237'
-        DEPLOYMENT_FILE = '/home/ec2-user/Stocker---DevOps/Kubernetes/deployments/backend-deployment.yaml'
-       
+        GITHUB_CREDS = credentials('github-credentials')
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout App') {
             steps {
-                git branch: 'main', url: "${GITHUB_REPO_URL}"
+                git branch: 'main', 
+                    url: "${GITHUB_REPO_URL}",
+                    credentialsId: 'github-credentials'
             }
         }
 
@@ -40,69 +42,57 @@ pipeline {
             }
         }
 
-        stage('Clean Old Images') {
+        stage('Build and Push Image') {
             steps {
                 script {
+                    // Clean old images
                     sh "docker rmi -f ${DOCKER_IMAGE}:${DOCKER_TAG} || true"
-                }
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                script {
+                    
+                    // Build new image
                     echo "Building Docker image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
                     docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}", "-f backend/Dockerfile backend")
-                }
-            }
-        }
-
-        stage('Push Docker Image to ECR') {
-            steps {
-                script {
+                    
+                    // Push to ECR
                     sh """
                         aws ecr get-login-password --region ${AWS_REGION} | \
                         docker login --username AWS --password-stdin ${ECR_REPO_URI}
-                    """
-                    
-                    sh """
+                        
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${ECR_REPO_URI}:${DOCKER_TAG}
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:${DOCKER_TAG}
                         docker push ${ECR_REPO_URI}:${DOCKER_TAG}
                     """
                 }
             }
         }
 
-        stage('Test SSH Connection and Pull Image') {
-            environment {
-                SSH_KEY = credentials('ec2-ssh-key')
-            }
+        stage('Update Deployment File') {
             steps {
-                script {
-                    try {
+                dir('k8s-config') {
+                    // Checkout the deployment repository
+                    git branch: 'main',
+                        url: "${GITHUB_DEPLOYMENT_REPO}",
+                        credentialsId: 'github-credentials'
+                    
+                    script {
+                        // Update the deployment file
                         sh """
-                            chmod 400 \${SSH_KEY}
-                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
-                                export AWS_DEFAULT_REGION=${AWS_REGION}
-                                
-                                aws ecr get-login-password --region ${AWS_REGION} | \
-                                docker login --username AWS --password-stdin ${ECR_REPO_URI}
-                                
-                                echo "Pulling image: ${ECR_REPO_URI}:${DOCKER_TAG}"
-                                docker pull ${ECR_REPO_URI}:${DOCKER_TAG}
-                                
-                                docker images | grep ${ECR_REPO_URI}
-                            '
+                            # Update image tag in deployment file
+                            sed -i "s|${ECR_REPO_URI}:[0-9]*|${ECR_REPO_URI}:${DOCKER_TAG}|g" Kubernetes/deployments/backend-deployment.yaml
+                            
+                            # Configure git
+                            git config user.email "jenkins@example.com"
+                            git config user.name "Jenkins"
+                            
+                            # Commit and push changes
+                            git add Kubernetes/deployments/backend-deployment.yaml
+                            git commit -m "Update backend deployment to version ${DOCKER_TAG}" || true
+                            git push https://${GITHUB_CREDS_USR}:${GITHUB_CREDS_PSW}@${GITHUB_DEPLOYMENT_REPO#https://}.git main
                         """
-                    } catch (Exception e) {
-                        error "Failed to pull image on EC2: ${e.getMessage()}"
                     }
                 }
             }
         }
 
-        stage('Update Kubernetes Deployment') {
+        stage('Deploy to Kubernetes') {
             environment {
                 SSH_KEY = credentials('ec2-ssh-key')
             }
@@ -112,25 +102,27 @@ pipeline {
                         sh """
                             chmod 400 \${SSH_KEY}
                             ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
-                                echo "Updating deployment file with new image tag: ${DOCKER_TAG}"
-                                sed -i "s|${ECR_REPO_URI}:[0-9]*|${ECR_REPO_URI}:${DOCKER_TAG}|g" ${DEPLOYMENT_FILE}
+                                # Pull latest deployment configurations
+                                cd /home/ec2-user/Stocker---DevOps
+                                git pull origin main
                                 
-                                echo "Applying updated deployment..."
-                                kubectl apply -f ${DEPLOYMENT_FILE}
+                                # Pull new image from ECR
+                                aws ecr get-login-password --region ${AWS_REGION} | \
+                                docker login --username AWS --password-stdin ${ECR_REPO_URI}
+                                docker pull ${ECR_REPO_URI}:${DOCKER_TAG}
                                 
-                                echo "Waiting for rollout to complete..."
+                                # Apply the deployment
+                                kubectl apply -f Kubernetes/deployments/backend-deployment.yaml
                                 kubectl rollout status deployment/backend
-                                
-                                echo "Current deployment status:"
-                                kubectl get deployment backend
                             '
                         """
                     } catch (Exception e) {
-                        error "Failed to update Kubernetes deployment: ${e.getMessage()}"
+                        error "Failed to deploy to Kubernetes: ${e.getMessage()}"
                     }
                 }
             }
         }
+
         stage('Cleanup Old Images') {
             environment {
                 SSH_KEY = credentials('ec2-ssh-key')
@@ -142,27 +134,18 @@ pipeline {
                             chmod 400 \${SSH_KEY}
                             ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
                                 echo "Cleaning up old Docker images..."
-                                
-                                # Get all image tags except the latest two
                                 OLD_TAGS=\$(docker images ${ECR_REPO_URI} --format "{{.Tag}}" | sort -n | head -n -2)
                                 
-                                # Remove old images if they exist
                                 if [ ! -z "\${OLD_TAGS}" ]; then
                                     for tag in \${OLD_TAGS}; do
                                         echo "Removing image: ${ECR_REPO_URI}:\${tag}"
                                         docker rmi ${ECR_REPO_URI}:\${tag} || true
                                     done
-                                else
-                                    echo "No old images to clean up"
                                 fi
-                                
-                                echo "Current images:"
-                                docker images ${ECR_REPO_URI}
                             '
                         """
                     } catch (Exception e) {
                         echo "Warning: Image cleanup encountered an issue: ${e.getMessage()}"
-                        // Don't fail the build if cleanup fails
                     }
                 }
             }
@@ -178,6 +161,9 @@ pipeline {
         }
         aborted {
             echo 'Pipeline was aborted because no relevant changes were detected.'
+        }
+        always {
+            cleanWs()
         }
     }
 }
