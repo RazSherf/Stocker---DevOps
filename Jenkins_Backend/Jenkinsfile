@@ -72,9 +72,8 @@ pipeline {
                         url: "${GITHUB_DEPLOYMENT_REPO}",
                         credentialsId: 'github-credentials'
                     
-                    script {
-                        // Update the deployment file
-                        sh """
+                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                        sh '''
                             # Update image tag in deployment file
                             sed -i "s|${ECR_REPO_URI}:[0-9]*|${ECR_REPO_URI}:${DOCKER_TAG}|g" Kubernetes/deployments/backend-deployment.yaml
                             
@@ -85,8 +84,11 @@ pipeline {
                             # Commit and push changes
                             git add Kubernetes/deployments/backend-deployment.yaml
                             git commit -m "Update backend deployment to version ${DOCKER_TAG}" || true
-                            git push https://${GITHUB_CREDS_USR}:${GITHUB_CREDS_PSW}@github.com/RazSherf/Stocker---DevOps.git main
-                        """
+                            
+                            # Use credentials safely
+                            git remote set-url origin "https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/RazSherf/Stocker---DevOps.git"
+                            git push origin main
+                        '''
                     }
                 }
             }
