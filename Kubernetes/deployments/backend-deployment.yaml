@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: backend
 spec:
+      imagePullSecrets:
+        - name: ecr-credentials
   replicas: 1
   selector:
     matchLabels:
@@ -14,7 +16,7 @@ spec:
     spec:
       containers:
         - name: k8s-backend
-          image: 471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo:50
+          image: 471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo:51
           imagePullPolicy: Always
           ports:
             - containerPort: 5000
