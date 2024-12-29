@@ -123,75 +123,53 @@ pipeline {
             }
         }
 
-        stage('Deploy to Kubernetes') {
-            environment {
-                SSH_KEY = credentials('ec2-ssh-key')
-            }
+       stage('Deploy to Kubernetes') {
             steps {
                 script {
                     try {
                         sh """
-                            chmod 400 \${SSH_KEY}
                             ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
-                                # Pull latest deployment configurations
-                                cd /home/ec2-user/Stocker---DevOps
-                                git checkout main
-                                git fetch origin
-                                git reset --hard origin/main
+                                # Add verification steps
+                                echo "Verifying deployment state..."
                                 
-                                # Show current deployment file
-                                echo "Current deployment file content:"
-                                cat Kubernetes/deployments/backend-deployment.yaml
-                                
-                                # Login to ECR and pull new image
-                                aws ecr get-login-password --region ${AWS_REGION} | \
-                                docker login --username AWS --password-stdin ${ECR_REPO_URI}
-                                
-                                echo "Pulling image: ${ECR_REPO_URI}:${DOCKER_TAG}"
-                                docker pull ${ECR_REPO_URI}:${DOCKER_TAG}
-                                
-                                # Delete existing pods to force update
-                                echo "Deleting existing backend pods..."
-                                kubectl delete pods -l app=backend || true
+                                # Check if deployment exists
+                                if ! kubectl get deployment backend &>/dev/null; then
+                                    echo "Deployment does not exist!"
+                                    exit 1
+                                fi
                                 
                                 # Apply the deployment
-                                echo "Applying deployment..."
                                 kubectl apply -f Kubernetes/deployments/backend-deployment.yaml
                                 
-                                # Wait for rollout
-                                echo "Waiting for rollout..."
-                                kubectl rollout status deployment/backend --timeout=180s
+                                # Wait for rollout with longer timeout
+                                if ! kubectl rollout status deployment/backend --timeout=300s; then
+                                    echo "Deployment failed to roll out"
+                                    kubectl rollout undo deployment/backend
+                                    exit 1
+                                fi
                                 
-                                # Show final status
-                                echo "Deployment status:"
-                                kubectl get deployment backend
-                                echo "Pod status:"
-                                kubectl get pods -l app=backend
-                                echo "Pod description:"
-                                kubectl describe pods -l app=backend
+                                # Verify pod health
+                                READY_PODS=$(kubectl get pods -l app=backend -o jsonpath="{.items[*].status.containerStatuses[*].ready}" | tr ' ' '\n' | grep -c "true")
+                                TOTAL_PODS=$(kubectl get deployment backend -o jsonpath="{.spec.replicas}")
+                                
+                                if [ "$READY_PODS" -ne "$TOTAL_PODS" ]; then
+                                    echo "Not all pods are ready! Ready: $READY_PODS, Expected: $TOTAL_PODS"
+                                    exit 1
+                                fi
                             '
                         """
                     } catch (Exception e) {
-                        echo "Deployment failed: ${e.getMessage()}"
-                        
-                        // Get debugging information
+                        // Enhanced error handling
                         sh """
                             ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
-                                echo "DEBUG: Pod Status"
-                                kubectl get pods -l app=backend
+                                echo "Starting rollback procedure..."
+                                kubectl rollout undo deployment/backend
                                 
-                                echo "DEBUG: Pod Events"
-                                kubectl describe pods -l app=backend | grep -A 20 Events:
-                                
-                                echo "DEBUG: Pod Logs"
-                                kubectl logs -l app=backend --tail=50 --previous || true
-                                
-                                echo "DEBUG: Deployment Status"
-                                kubectl describe deployment backend
+                                # Verify rollback success
+                                kubectl rollout status deployment/backend --timeout=180s
                             '
                         """
-                        
-                        error "Failed to deploy to Kubernetes: ${e.getMessage()}"
+                        error "Deployment failed and rollback initiated: ${e.getMessage()}"
                     }
                 }
             }
