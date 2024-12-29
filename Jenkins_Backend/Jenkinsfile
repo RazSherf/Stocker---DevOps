@@ -34,8 +34,6 @@ pipeline {
 
                     if (!backendChanged) {
                         currentBuild.result = 'ABORTED'
-                        currentBuild.rawBuild.keepLog(false)
-                        echo "No relevant changes detected in the backend directory. Aborting pipeline."
                         error("No changes detected in the backend directory.")
                     }
                 }
@@ -67,21 +65,36 @@ pipeline {
         stage('Update Deployment File') {
             steps {
                 dir('k8s-config') {
-                    // Checkout the deployment repository
                     git branch: 'main',
                         url: "${GITHUB_DEPLOYMENT_REPO}",
                         credentialsId: 'github-credentials'
                     
                     withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
                         sh '''
-                            # Show current image tag
+                            # Debug: Show current directory and files
+                            pwd
+                            ls -la Kubernetes/deployments/
+                            
                             echo "Current deployment file content:"
                             cat Kubernetes/deployments/backend-deployment.yaml
                             
-                            # Update image tag in deployment file
-                            sed -i "s|${ECR_REPO_URI}:[0-9]*|${ECR_REPO_URI}:${DOCKER_TAG}|g" Kubernetes/deployments/backend-deployment.yaml
+                            # Create a temporary file with updates
+                            awk -v repo="${ECR_REPO_URI}" -v tag="${DOCKER_TAG}" '
+                            /image:/ && !done {
+                                print "          image: " repo ":" tag
+                                print "          imagePullPolicy: Always"
+                                done=1
+                                next
+                            }
+                            !/imagePullPolicy:/ {print}' Kubernetes/deployments/backend-deployment.yaml > Kubernetes/deployments/backend-deployment.yaml.tmp
                             
-                            # Show updated content
+                            # Show the temporary file content
+                            echo "Temporary file content:"
+                            cat Kubernetes/deployments/backend-deployment.yaml.tmp
+                            
+                            # Replace the original file
+                            mv Kubernetes/deployments/backend-deployment.yaml.tmp Kubernetes/deployments/backend-deployment.yaml
+                            
                             echo "Updated deployment file content:"
                             cat Kubernetes/deployments/backend-deployment.yaml
                             
@@ -89,13 +102,24 @@ pipeline {
                             git config user.email "jenkins@example.com"
                             git config user.name "Jenkins"
                             
-                            # Force add and commit changes
-                            git add -f Kubernetes/deployments/backend-deployment.yaml
-                            git diff --cached --exit-code || git commit -m "Update backend deployment to version ${DOCKER_TAG}"
+                            # Show git status
+                            git status
                             
-                            # Use credentials safely and force push
-                            git remote set-url origin "https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/RazSherf/Stocker---DevOps.git"
-                            git push origin main
+                            # Add and commit changes
+                            git add Kubernetes/deployments/backend-deployment.yaml
+                            
+                            # Show what's staged
+                            git diff --cached
+                            
+                            # Commit if there are changes
+                            if ! git diff --cached --quiet; then
+                                git commit -m "Update backend deployment to version ${DOCKER_TAG}"
+                                git remote set-url origin "https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/RazSherf/Stocker---DevOps.git"
+                                echo "Pushing changes..."
+                                git push origin main
+                            else
+                                echo "No changes to commit"
+                            fi
                         '''
                     }
                 }
@@ -114,13 +138,11 @@ pipeline {
                             ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
                                 # Pull latest deployment configurations
                                 cd /home/ec2-user/Stocker---DevOps
-                                
-                                # Reset any local changes and update from remote
                                 git checkout main
                                 git fetch origin
                                 git reset --hard origin/main
                                 
-                                # Show deployment file content
+                                # Show current deployment file
                                 echo "Current deployment file content:"
                                 cat Kubernetes/deployments/backend-deployment.yaml
                                 
@@ -131,30 +153,44 @@ pipeline {
                                 echo "Pulling image: ${ECR_REPO_URI}:${DOCKER_TAG}"
                                 docker pull ${ECR_REPO_URI}:${DOCKER_TAG}
                                 
+                                # Delete existing pods to force update
+                                echo "Deleting existing backend pods..."
+                                kubectl delete pods -l app=backend || true
+                                
                                 # Apply the deployment
+                                echo "Applying deployment..."
                                 kubectl apply -f Kubernetes/deployments/backend-deployment.yaml
                                 
-                                # Wait for rollout with increased timeout
+                                # Wait for rollout
+                                echo "Waiting for rollout..."
                                 kubectl rollout status deployment/backend --timeout=180s
                                 
-                                # Show deployment status
+                                # Show final status
                                 echo "Deployment status:"
                                 kubectl get deployment backend
+                                echo "Pod status:"
                                 kubectl get pods -l app=backend
+                                echo "Pod description:"
+                                kubectl describe pods -l app=backend
                             '
                         """
                     } catch (Exception e) {
                         echo "Deployment failed: ${e.getMessage()}"
                         
-                        // Get additional debugging information
+                        // Get debugging information
                         sh """
                             ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
-                                echo "Pod status:"
+                                echo "DEBUG: Pod Status"
                                 kubectl get pods -l app=backend
-                                echo "Pod logs:"
-                                kubectl logs -l app=backend --tail=50
-                                echo "Pod description:"
-                                kubectl describe pods -l app=backend
+                                
+                                echo "DEBUG: Pod Events"
+                                kubectl describe pods -l app=backend | grep -A 20 Events:
+                                
+                                echo "DEBUG: Pod Logs"
+                                kubectl logs -l app=backend --tail=50 --previous || true
+                                
+                                echo "DEBUG: Deployment Status"
+                                kubectl describe deployment backend
                             '
                         """
                         
