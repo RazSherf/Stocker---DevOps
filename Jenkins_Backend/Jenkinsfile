@@ -71,10 +71,6 @@ pipeline {
                     
                     withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
                         sh '''
-                            # Debug: Show current directory and files
-                            pwd
-                            ls -la Kubernetes/deployments/
-                            
                             echo "Current deployment file content:"
                             cat Kubernetes/deployments/backend-deployment.yaml
                             
@@ -86,10 +82,10 @@ pipeline {
                                 done=1
                                 next
                             }
-                            /spec:/ && !specDone {
-                                print $0
+                            /spec:.*containers:/ && !specDone {
                                 print "      imagePullSecrets:"
                                 print "        - name: ecr-credentials"
+                                print $0
                                 specDone=1
                                 next
                             }
