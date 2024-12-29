@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
         - name: k8s-backend
-          image: stocker-backend
-          imagePullPolicy: Never
+          image: 471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo:50
+          imagePullPolicy: Always
           ports:
             - containerPort: 5000
           envFrom:
