@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: k8s-backend
-          image: 471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo:59
+          image: 471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo:60
           imagePullPolicy: Always
           ports:
             - containerPort: 5000
