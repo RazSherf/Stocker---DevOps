@@ -123,7 +123,7 @@ pipeline {
             }
         }
 
-        stage('Deploy to Kubernetes') {
+       stage('Deploy to Kubernetes') {
             environment {
                 SSH_KEY = credentials('ec2-ssh-key')
             }
@@ -137,11 +137,8 @@ pipeline {
                                 git clone ${GITHUB_DEPLOYMENT_REPO} /tmp/k8s-config
                                 cd /tmp/k8s-config
                                 
-                                echo "Verifying deployment state..."
-                                kubectl get deployment backend || {
-                                    echo "Deployment does not exist!"
-                                    exit 1
-                                }
+                                # Fix YAML indentation before applying
+                                sed -i 's/^      imagePullSecrets:/  imagePullSecrets:/' Kubernetes/deployments/backend-deployment.yaml
                                 
                                 kubectl apply -f Kubernetes/deployments/backend-deployment.yaml
                                 kubectl rollout restart deployment backend
