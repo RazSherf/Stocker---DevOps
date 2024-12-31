@@ -122,49 +122,51 @@ pipeline {
                 }
             }
         }
+
         stage('Deploy to Kubernetes') {
-        environment {
-            SSH_KEY = credentials('ec2-ssh-key')
-        }
-        steps {
-            script {
-                try {
-                    sh """
-                        chmod 400 \${SSH_KEY}
-                        ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
-                            rm -rf /tmp/k8s-config
-                            git clone ${GITHUB_DEPLOYMENT_REPO} /tmp/k8s-config
-                            cd /tmp/k8s-config
-                            
-                            echo "Verifying deployment state..."
-                            if ! kubectl get deployment backend &>/dev/null; then
-                                echo "Deployment does not exist!"
-                                exit 1
-                            fi
-                            
-                            kubectl apply -f /tmp/k8s-config/Kubernetes/deployments/backend-deployment.yaml
-                            
-                            if ! kubectl rollout status deployment/backend --timeout=300s; then
-                                echo "Deployment failed to roll out"
+            environment {
+                SSH_KEY = credentials('ec2-ssh-key')
+            }
+            steps {
+                script {
+                    try {
+                        sh """
+                            chmod 400 \${SSH_KEY}
+                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
+                                rm -rf /tmp/k8s-config
+                                git clone ${GITHUB_DEPLOYMENT_REPO} /tmp/k8s-config
+                                cd /tmp/k8s-config
+                                
+                                echo "Verifying deployment state..."
+                                if ! kubectl get deployment backend &>/dev/null; then
+                                    echo "Deployment does not exist!"
+                                    exit 1
+                                fi
+                                
+                                kubectl apply -f /tmp/k8s-config/Kubernetes/deployments/backend-deployment.yaml
+                                
+                                if ! kubectl rollout status deployment/backend --timeout=300s; then
+                                    echo "Deployment failed to roll out"
+                                    kubectl rollout undo deployment/backend
+                                    exit 1
+                                fi
+                            '''
+                        """
+                    } catch (Exception e) {
+                        sh """
+                            chmod 400 \${SSH_KEY}
+                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
+                                echo "Starting rollback procedure..."
                                 kubectl rollout undo deployment/backend
-                                exit 1
-                            fi
-                        '''
-                    """
-                } catch (Exception e) {
-                    sh """
-                        chmod 400 \${SSH_KEY}
-                        ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
-                            echo "Starting rollback procedure..."
-                            kubectl rollout undo deployment/backend
-                            kubectl rollout status deployment/backend --timeout=180s
-                        '''
-                    """
-                    error "Deployment failed and rollback initiated: ${e.getMessage()}"
+                                kubectl rollout status deployment/backend --timeout=180s
+                            '''
+                        """
+                        error "Deployment failed and rollback initiated: ${e.getMessage()}"
+                    }
                 }
             }
         }
-    }
+
         stage('Cleanup Old Images') {
             environment {
                 SSH_KEY = credentials('ec2-ssh-key')
@@ -174,7 +176,7 @@ pipeline {
                     try {
                         sh """
                             chmod 400 \${SSH_KEY}
-                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '
+                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
                                 echo "Cleaning up old Docker images..."
                                 OLD_TAGS=\$(docker images ${ECR_REPO_URI} --format "{{.Tag}}" | sort -n | head -n -2)
                                 
@@ -184,7 +186,7 @@ pipeline {
                                         docker rmi ${ECR_REPO_URI}:\${tag} || true
                                     done
                                 fi
-                            '
+                            '''
                         """
                     } catch (Exception e) {
                         echo "Warning: Image cleanup encountered an issue: ${e.getMessage()}"
