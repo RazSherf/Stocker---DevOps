@@ -122,62 +122,85 @@ pipeline {
                 }
             }
         }
-        stage('Deploy to Kubernetes') {
-            environment {
-                SSH_KEY = credentials('ec2-ssh-key')
-            }
+
+
+      stage('Update K8s Deployment') {
             steps {
-                script {
-                    try {
-                        sh """
-                            chmod 400 \${SSH_KEY}
-                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
-                                # Add verification steps
-                                echo "Verifying deployment state..."
-                                
-                                # Check if deployment exists
-                                if ! kubectl get deployment backend &>/dev/null; then
-                                    echo "Deployment does not exist!"
-                                    exit 1
-                                fi
-                                
-                                # Apply the deployment
-                                kubectl apply -f Kubernetes/deployments/backend-deployment.yaml
-                                
-                                # Wait for rollout with longer timeout
-                                if ! kubectl rollout status deployment/backend --timeout=300s; then
-                                    echo "Deployment failed to roll out"
-                                    kubectl rollout undo deployment/backend
-                                    exit 1
-                                fi
-                                
-                                # Verify pod health
-                                READY_PODS=\$(kubectl get pods -l app=backend -o jsonpath="{.items[*].status.containerStatuses[*].ready}" | tr " " "\n" | grep -c "true")
-                                TOTAL_PODS=\$(kubectl get deployment backend -o jsonpath="{.spec.replicas}")
-                                
-                                if [ "\$READY_PODS" -ne "\$TOTAL_PODS" ]; then
-                                    echo "Not all pods are ready! Ready: \$READY_PODS, Expected: \$TOTAL_PODS"
-                                    exit 1
-                                fi
-                            '''
-                        """
-                    } catch (Exception e) {
-                        // Enhanced error handling
-                        sh """
-                            chmod 400 \${SSH_KEY}
-                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
-                                echo "Starting rollback procedure..."
-                                kubectl rollout undo deployment/backend
-                                
-                                # Verify rollback success
-                                kubectl rollout status deployment/backend --timeout=180s
-                            '''
-                        """
-                        error "Deployment failed and rollback initiated: ${e.getMessage()}"
-                    }
+                sshagent(['ec2-ssh-key']) {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no ${EC2_HOST} '
+                            rm -rf /tmp/k8s-config
+                            git clone ${GITHUB_DEPLOYMENT_REPO} /tmp/k8s-config
+                            kubectl apply -f /tmp/k8s-config/Kubernetes/deployments/backend-deployment.yaml
+                            kubectl rollout restart deployment backend-deployment
+                        '
+                    """
                 }
             }
         }
+
+        // stage('Deploy to Kubernetes') {
+        //     environment {
+        //         SSH_KEY = credentials('ec2-ssh-key')
+        //     }
+        //     steps {
+        //         script {
+        //             try {
+        //                 sh """
+        //                     chmod 400 \${SSH_KEY}
+        //                     ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
+        //                         # Add verification steps
+        //                         echo "Verifying deployment state..."
+                                
+        //                         # Check if deployment exists
+        //                         if ! kubectl get deployment backend &>/dev/null; then
+        //                             echo "Deployment does not exist!"
+        //                             exit 1
+        //                         fi
+                                
+        //                         # Apply the deployment
+        //                         kubectl apply -f Kubernetes/deployments/backend-deployment.yaml
+                                
+        //                         # Wait for rollout with longer timeout
+        //                         if ! kubectl rollout status deployment/backend --timeout=300s; then
+        //                             echo "Deployment failed to roll out"
+        //                             kubectl rollout undo deployment/backend
+        //                             exit 1
+        //                         fi
+                                
+        //                         # Verify pod health
+        //                         READY_PODS=\$(kubectl get pods -l app=backend -o jsonpath="{.items[*].status.containerStatuses[*].ready}" | tr " " "\n" | grep -c "true")
+        //                         TOTAL_PODS=\$(kubectl get deployment backend -o jsonpath="{.spec.replicas}")
+                                
+        //                         if [ "\$READY_PODS" -ne "\$TOTAL_PODS" ]; then
+        //                             echo "Not all pods are ready! Ready: \$READY_PODS, Expected: \$TOTAL_PODS"
+        //                             exit 1
+        //                         fi
+        //                     '''
+        //                 """
+        //             } catch (Exception e) {
+        //                 // Enhanced error handling
+        //                 sh """
+        //                     chmod 400 \${SSH_KEY}
+        //                     ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
+        //                         echo "Starting rollback procedure..."
+        //                         kubectl rollout undo deployment/backend
+                                
+        //                         # Verify rollback success
+        //                         kubectl rollout status deployment/backend --timeout=180s
+        //                     '''
+        //                 """
+        //                 error "Deployment failed and rollback initiated: ${e.getMessage()}"
+        //             }
+        //         }
+            // }
+        // }
+
+
+
+
+
+        
         stage('Cleanup Old Images') {
             environment {
                 SSH_KEY = credentials('ec2-ssh-key')
