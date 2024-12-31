@@ -63,94 +63,96 @@ pipeline {
         }
 
         stage('Update Deployment File') {
-            steps {
-                dir('k8s-config') {
-                    git branch: 'main',
-                        url: "${GITHUB_DEPLOYMENT_REPO}",
-                        credentialsId: 'github-credentials'
-                    
-                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
-                        sh '''
-                            echo "Current deployment file content:"
-                            cat Kubernetes/deployments/backend-deployment.yaml
-                            
-                            # Create a temporary file with updates
-                            awk -v repo="${ECR_REPO_URI}" -v tag="${DOCKER_TAG}" '
-                            /image:/ && !done {
-                                print "          image: " repo ":" tag
-                                print "          imagePullPolicy: Always"
-                                done=1
-                                next
-                            }
-                            /spec:.*containers:/ && !specDone {
-                                print "      imagePullSecrets:"
-                                print "        - name: ecr-credentials"
-                                print $0
-                                specDone=1
-                                next
-                            }
-                            !/imagePullPolicy:/ {print}' Kubernetes/deployments/backend-deployment.yaml > Kubernetes/deployments/backend-deployment.yaml.tmp
-                            
-                            # Show the temporary file content
-                            echo "Temporary file content:"
-                            cat Kubernetes/deployments/backend-deployment.yaml.tmp
-                            
-                            # Replace the original file
-                            mv Kubernetes/deployments/backend-deployment.yaml.tmp Kubernetes/deployments/backend-deployment.yaml
-                            
-                            echo "Updated deployment file content:"
-                            cat Kubernetes/deployments/backend-deployment.yaml
-                            
-                            # Configure git
-                            git config user.email "jenkins@example.com"
-                            git config user.name "Jenkins"
-                            
-                            # Add and commit changes
-                            git add Kubernetes/deployments/backend-deployment.yaml
-                            
-                            # Commit if there are changes
-                            if ! git diff --cached --quiet; then
-                                git commit -m "Update backend deployment to version ${DOCKER_TAG} and add ECR credentials"
-                                git remote set-url origin "https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/RazSherf/Stocker---DevOps.git"
-                                echo "Pushing changes..."
-                                git push origin main
-                            else
-                                echo "No changes to commit"
-                            fi
-                        '''
-                    }
-                }
-            }
-        }
-
-       stage('Deploy to Kubernetes') {
-            environment {
-                SSH_KEY = credentials('ec2-ssh-key')
-            }
-            steps {
-                script {
-                    try {
-                        sh """
-                            chmod 400 \${SSH_KEY}
-                            ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
-                                rm -rf /tmp/k8s-config
-                                git clone ${GITHUB_DEPLOYMENT_REPO} /tmp/k8s-config
-                                cd /tmp/k8s-config
+                steps {
+                    dir('k8s-config') {
+                        git branch: 'main',
+                            url: "${GITHUB_DEPLOYMENT_REPO}",
+                            credentialsId: 'github-credentials'
+                        
+                        withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                            sh '''
+                                echo "Current deployment file content:"
+                                cat Kubernetes/deployments/backend-deployment.yaml
                                 
-                                # Fix YAML indentation before applying
-                                sed -i 's/^      imagePullSecrets:/  imagePullSecrets:/' Kubernetes/deployments/backend-deployment.yaml
+                                # Create a temporary file with updates
+                                awk -v repo="${ECR_REPO_URI}" -v tag="${DOCKER_TAG}" '
+                                /image:/ && !done {
+                                    # Update the image tag in the deployment file
+                                    print "          image: " repo ":" tag
+                                    print "          imagePullPolicy: Always"
+                                    done=1
+                                    next
+                                }
+                                /spec:.*containers:/ && !specDone {
+                                    # Add imagePullSecrets section to the deployment file
+                                    print "      imagePullSecrets:"
+                                    print "        - name: ecr-credentials"  # Ensure ecr-credentials secret exists
+                                    print $0
+                                    specDone=1
+                                    next
+                                }
+                                !/imagePullPolicy:/ {print}' Kubernetes/deployments/backend-deployment.yaml > Kubernetes/deployments/backend-deployment.yaml.tmp
                                 
-                                kubectl apply -f Kubernetes/deployments/backend-deployment.yaml
-                                kubectl rollout restart deployment backend
-                                kubectl rollout status deployment/backend --timeout=90s
+                                # Show the temporary file content
+                                echo "Temporary file content:"
+                                cat Kubernetes/deployments/backend-deployment.yaml.tmp
+                                
+                                # Replace the original file with the updated one
+                                mv Kubernetes/deployments/backend-deployment.yaml.tmp Kubernetes/deployments/backend-deployment.yaml
+                                
+                                echo "Updated deployment file content:"
+                                cat Kubernetes/deployments/backend-deployment.yaml
+                                
+                                # Configure git user details
+                                git config user.email "jenkins@example.com"
+                                git config user.name "Jenkins"
+                                
+                                # Add and commit changes
+                                git add Kubernetes/deployments/backend-deployment.yaml
+                                
+                                # Commit if there are changes
+                                if ! git diff --cached --quiet; then
+                                    git commit -m "Update backend deployment to version ${DOCKER_TAG} and add ECR credentials"
+                                    git remote set-url origin "https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/RazSherf/Stocker---DevOps.git"
+                                    echo "Pushing changes..."
+                                    git push origin main
+                                else
+                                    echo "No changes to commit"
+                                fi
                             '''
-                        """
-                    } catch (Exception e) {
-                        error "Deployment failed: ${e.getMessage()}"
+                        }
                     }
                 }
             }
-        }
+
+    //    stage('Deploy to Kubernetes') {
+    //         environment {
+    //             SSH_KEY = credentials('ec2-ssh-key')
+    //         }
+    //         steps {
+    //             script {
+    //                 try {
+    //                     sh """
+    //                         chmod 400 \${SSH_KEY}
+    //                         ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} \${EC2_HOST} '''
+    //                             rm -rf /tmp/k8s-config
+    //                             git clone ${GITHUB_DEPLOYMENT_REPO} /tmp/k8s-config
+    //                             cd /tmp/k8s-config
+                                
+    //                             # Fix YAML indentation before applying
+    //                             sed -i 's/^      imagePullSecrets:/  imagePullSecrets:/' Kubernetes/deployments/backend-deployment.yaml
+                                
+    //                             kubectl apply -f Kubernetes/deployments/backend-deployment.yaml
+    //                             kubectl rollout restart deployment backend
+    //                             kubectl rollout status deployment/backend --timeout=90s
+    //                         '''
+    //                     """
+    //                 } catch (Exception e) {
+    //                     error "Deployment failed: ${e.getMessage()}"
+    //                 }
+    //             }
+    //         }
+    //     }
 
         stage('Cleanup Old Images') {
             environment {
