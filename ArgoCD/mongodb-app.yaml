@@ -10,7 +10,7 @@ spec:
     targetRevision: main
     path: Kubernetes/deployments
     directory:
-      include: "mongo-*"
+      include: "mongodb-*"
   destination:
     server: https://kubernetes.default.svc
     namespace: default
