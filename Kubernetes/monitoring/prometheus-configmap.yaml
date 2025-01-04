@@ -34,4 +34,4 @@ data:
           - targets: ['18.213.94.237:30002']
             labels:
               service: backend
-        metrics_path: "/api/products"
+        metrics_path: "/metrics"  # Changed from "/api/products" to "/metrics"
