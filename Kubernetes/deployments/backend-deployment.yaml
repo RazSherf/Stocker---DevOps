@@ -16,7 +16,7 @@ spec:
         - name: ecr-credentials  # Make sure the secret exists in the cluster
       containers:
         - name: k8s-backend
-          image: 471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo:74
+          image: 471112618713.dkr.ecr.us-east-1.amazonaws.com/backend_repo:75
           imagePullPolicy: Always
           ports:
             - containerPort: 5000
