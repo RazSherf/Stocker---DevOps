@@ -60,6 +60,6 @@ data:
       # Static Configuration for Backend Service
       - job_name: 'backend-nodeport'
         static_configs:
-          - targets: ['18.213.94.237:30002']
+          - targets: ['18.213.94.237:30002/api/products']
             labels:
               service: backend
