@@ -24,7 +24,7 @@ This project automates the process of deploying a full-stack web application, wh
 - **Role**: Kubernetes is the container orchestration platform used to deploy and manage the application.
 - **Functionality**: Kubernetes takes care of deploying, scaling, and managing containers. It ensures that the full-stack web application runs reliably, with self-healing and automatic scaling features.
 
-![Kubernetes Logo](https://upload.wikimedia.org/wikipedia/commons/3/39/Kubernetes_logo.svg)
+![Kubernetes Logo](<i class="fa fa-docker"></i>)
 
 ## How It Works
 
