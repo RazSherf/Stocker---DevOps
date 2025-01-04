@@ -8,23 +8,17 @@ This project automates the process of deploying a full-stack web application, wh
 
 ## Technologies
 
-### Jenkins
+### <i class="fa fa-jenkins"></i> Jenkins
 - **Role**: Jenkins automates the build and testing processes for the application.
 - **Functionality**: It detects changes in the code repository, triggers builds, runs tests, and creates Docker images, which are then pushed to a container registry.
 
-![Jenkins Logo](https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Jenkins_logo.svg/2560px-Jenkins_logo.svg.png)
-
-### ArgoCD
+### <i class="fa fa-git"></i> ArgoCD
 - **Role**: ArgoCD automates the deployment process of the application to Kubernetes.
 - **Functionality**: It watches for changes in a Git repository (which contains Kubernetes deployment configurations) and synchronizes these changes to the Kubernetes cluster, ensuring the latest application version is always deployed.
 
-![ArgoCD Logo](https://argoproj.github.io/argo-cd/img/logo/argo-cd-logo.svg)
-
-### Kubernetes
+### <i class="fa fa-cogs"></i> Kubernetes
 - **Role**: Kubernetes is the container orchestration platform used to deploy and manage the application.
 - **Functionality**: Kubernetes takes care of deploying, scaling, and managing containers. It ensures that the full-stack web application runs reliably, with self-healing and automatic scaling features.
-
-![Kubernetes Logo](<i class="fa fa-docker"></i>)
 
 ## How It Works
 
