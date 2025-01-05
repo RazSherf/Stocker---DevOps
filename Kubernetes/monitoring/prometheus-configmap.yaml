@@ -10,24 +10,20 @@ data:
       evaluation_interval: 15s
 
     scrape_configs:
+      # Kubernetes Service Discovery (default config)
       - job_name: 'kubernetes-service-endpoints'
         kubernetes_sd_configs:
           - role: endpoints
-          # Add namespace configuration
-          namespaces:
-            names:
-              - kube-system  # Specify kube-system namespace where CoreDNS runs
         relabel_configs:
-          # Keep only coredns endpoints
-          - source_labels: [__meta_kubernetes_service_name]
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
             action: keep
-            regex: coredns
-          # Set metrics path
-          - source_labels: []
+            regex: "true"
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
             target_label: __metrics_path__
-            replacement: /metrics
-          # Add useful labels
-          - source_labels: [__meta_kubernetes_namespace]
-            target_label: kubernetes_namespace
-          - source_labels: [__meta_kubernetes_service_name]
-            target_label: kubernetes_service
+            regex: "(.*)"
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: "([^:]+)(?::\\d+)?;(\\d+)"
+            replacement: "$1:$2"
