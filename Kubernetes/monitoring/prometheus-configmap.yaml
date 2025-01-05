@@ -27,11 +27,3 @@ data:
             target_label: __address__
             regex: "([^:]+)(?::\\d+)?;(\\d+)"
             replacement: "$1:$2"
-
-      # Static Configuration for Backend Service
-      - job_name: 'backend-nodeport'
-        static_configs:
-          - targets: ['18.213.94.237:30002']
-            labels:
-              service: backend
-        metrics_path: "/metrics"  # Changed from "/api/products" to "/metrics"
