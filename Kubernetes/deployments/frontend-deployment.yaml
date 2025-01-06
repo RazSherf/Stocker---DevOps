@@ -16,7 +16,7 @@ spec:
         - name: ecr-credentials
       containers:
         - name: k8s-frontend
-          image: 471112618713.dkr.ecr.us-east-1.amazonaws.com/frontend_repo:49
+          image: 471112618713.dkr.ecr.us-east-1.amazonaws.com/frontend_repo:58
           imagePullPolicy: Always
           ports:
             - containerPort: 80
