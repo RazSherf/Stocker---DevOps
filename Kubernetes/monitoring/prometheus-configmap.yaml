@@ -14,18 +14,22 @@ data:
       - job_name: 'flask-app-metrics'
         kubernetes_sd_configs:
           - role: service
+            namespaces:
+              names:
+                - default  # Ensure this matches the namespace where your Flask service is located
+
         relabel_configs:
           # Match the service name
           - source_labels: [__meta_kubernetes_service_name]
             action: keep
-            regex: "backend"  # This should match your service name
+            regex: "backend"  # This should match your service name (the service name of your Flask app)
 
-          # Ensure Prometheus scrapes the service
+          # Ensure Prometheus scrapes the service (only if the annotation is true)
           - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
             action: keep
             regex: "true"  # Ensures that services with this annotation are scraped
 
-          # Set the metrics path to "/metrics" from the annotation
+          # Set the metrics path to "/metrics" from the annotation (should match the Flask metrics endpoint)
           - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
             action: replace
             target_label: __metrics_path__
@@ -37,4 +41,4 @@ data:
             action: replace
             target_label: __address__
             regex: "(.*)"
-            replacement: "$1:5000"  # Use internal port 5000 for scraping
+            replacement: "$1:5000"  # Use internal port 5000 for scraping (make sure this is the correct internal port)
